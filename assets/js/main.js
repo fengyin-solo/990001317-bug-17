@@ -1,6 +1,22 @@
 /**
  * 社区便民留言板 - 前端脚本
  */
+
+/**
+ * 从浏览器前进/后退缓存（bfcache）恢复页面时，
+ * 若此前详情页产生过新浏览，则刷新页面以展示最新浏览量
+ */
+window.addEventListener('pageshow', function(event) {
+    if (event.persisted) {
+        try {
+            if (sessionStorage.getItem('viewsDirty')) {
+                sessionStorage.removeItem('viewsDirty');
+                location.reload();
+            }
+        } catch (e) {}
+    }
+});
+
 document.addEventListener('DOMContentLoaded', function() {
     // 滚动信息复制实现无缝滚动
     const scrollContent = document.getElementById('scrollContent');

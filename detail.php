@@ -10,10 +10,7 @@ if ($id <= 0) {
 
 $db = getDB();
 
-// 增加浏览量
-$db->prepare("UPDATE messages SET views = views + 1 WHERE id = ?")->execute([$id]);
-
-// 获取详情
+// 先获取详情并校验有效性，无效留言（未通过/已拒绝/已删除）不计浏览量
 $stmt = $db->prepare("SELECT * FROM messages WHERE id = ? AND status = 1");
 $stmt->execute([$id]);
 $msg = $stmt->fetch();
@@ -22,6 +19,15 @@ if (!$msg) {
     header('Location: index.php');
     exit;
 }
+
+// 有效留言才记录浏览，同一访客重复访问只计一次
+$viewCounted = recordMessageView($msg['id']);
+if ($viewCounted) {
+    // 与数据库中的最新浏览量保持一致
+    $msg['views']++;
+}
+
+sendNoCacheHeaders();
 
 $pageTitle = cleanInput($msg['title']) . ' - 社区便民留言板';
 $currentPage = '';
@@ -131,4 +137,7 @@ include __DIR__ . '/includes/header.php';
     </div>
 </div>
 
+<?php if ($viewCounted): ?>
+<script>try { sessionStorage.setItem('viewsDirty', '1'); } catch (e) {}</script>
+<?php endif; ?>
 <?php include __DIR__ . '/includes/footer.php'; ?>

@@ -10,6 +10,8 @@ $jsPath = '../assets/js/main.js';
 
 $db = getDB();
 
+sendNoCacheHeaders();
+
 $status = $_GET['status'] ?? '';
 $reportType = $_GET['report_type'] ?? '';
 $keyword = trim($_GET['keyword'] ?? '');
@@ -46,7 +48,7 @@ $sql = "SELECT r.*, m.title as message_title, m.nickname as message_nickname, m.
         LEFT JOIN messages m ON r.message_id = m.id 
         LEFT JOIN admins a ON r.processed_by = a.id 
         $where 
-        ORDER BY r.created_at DESC 
+        ORDER BY r.created_at DESC, r.id DESC
         LIMIT $pageSize OFFSET $offset";
 $stmt = $db->prepare($sql);
 $stmt->execute($params);

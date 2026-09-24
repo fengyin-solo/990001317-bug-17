@@ -10,6 +10,8 @@ $jsPath = '../assets/js/main.js';
 
 $db = getDB();
 
+sendNoCacheHeaders();
+
 // 筛选参数
 $status = $_GET['status'] ?? '';
 $type = $_GET['type'] ?? '';
@@ -42,7 +44,7 @@ $countStmt->execute($params);
 $total = $countStmt->fetchColumn();
 $totalPages = ceil($total / $pageSize);
 
-$sql = "SELECT * FROM messages $where ORDER BY created_at DESC LIMIT $pageSize OFFSET $offset";
+$sql = "SELECT * FROM messages $where ORDER BY created_at DESC, id DESC LIMIT $pageSize OFFSET $offset";
 $stmt = $db->prepare($sql);
 $stmt->execute($params);
 $messages = $stmt->fetchAll();

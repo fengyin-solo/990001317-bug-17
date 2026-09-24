@@ -9,6 +9,8 @@ $jsPath = 'assets/js/main.js';
 
 $db = getDB();
 
+sendNoCacheHeaders();
+
 // 获取排序参数
 $sort = $_GET['sort'] ?? 'time';
 $type = $_GET['type'] ?? '';
@@ -25,8 +27,8 @@ if ($type && in_array($type, ['help', 'suggest', 'lost'])) {
     $params[] = $type;
 }
 
-// 排序
-$orderBy = ($sort === 'hot') ? "views DESC, created_at DESC" : "created_at DESC";
+// 排序（附加唯一 id 决胜键，保证同分时顺序确定，分页稳定）
+$orderBy = ($sort === 'hot') ? "views DESC, created_at DESC, id DESC" : "created_at DESC, id DESC";
 
 // 总数
 $countStmt = $db->prepare("SELECT COUNT(*) FROM messages $where");
@@ -45,7 +47,7 @@ $favoritedIds = getFavoritedMessageIds();
 $favoritedIds = array_flip($favoritedIds);
 
 // 滚动数据（最新5条）
-$scrollStmt = $db->query("SELECT id, type, title, created_at FROM messages WHERE status = 1 ORDER BY created_at DESC LIMIT 8");
+$scrollStmt = $db->query("SELECT id, type, title, created_at FROM messages WHERE status = 1 ORDER BY created_at DESC, id DESC LIMIT 8");
 $scrollMessages = $scrollStmt->fetchAll();
 
 // 统计

@@ -95,6 +95,36 @@ function getVisitorId() {
 }
 
 /**
+ * 禁止浏览器缓存当前页面
+ * 用于展示实时数据（浏览量等）的页面，避免返回时显示旧数据
+ */
+function sendNoCacheHeaders() {
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    header('Pragma: no-cache');
+    header('Expires: 0');
+}
+
+/**
+ * 记录留言浏览（按访客去重）
+ * 同一访客对同一条留言只计一次浏览，重复访问不增加浏览量
+ * 返回: true=本次计入了新浏览, false=重复浏览未计数
+ */
+function recordMessageView($messageId) {
+    $visitorId = getVisitorId();
+    $db = getDB();
+
+    // 利用唯一键(visitor_id, message_id)去重，并发下也不会重复计数
+    $stmt = $db->prepare("INSERT IGNORE INTO message_views (message_id, visitor_id) VALUES (?, ?)");
+    $stmt->execute([$messageId, $visitorId]);
+
+    if ($stmt->rowCount() > 0) {
+        $db->prepare("UPDATE messages SET views = views + 1 WHERE id = ?")->execute([$messageId]);
+        return true;
+    }
+    return false;
+}
+
+/**
  * 检查留言是否已收藏
  */
 function isFavorited($messageId) {

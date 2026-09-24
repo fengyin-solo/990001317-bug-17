@@ -10,6 +10,8 @@ $jsPath = 'assets/js/main.js';
 $db = getDB();
 $visitorId = getVisitorId();
 
+sendNoCacheHeaders();
+
 $type = $_GET['type'] ?? '';
 $page = max(1, intval($_GET['page'] ?? 1));
 $pageSize = 10;
@@ -33,7 +35,7 @@ $sql = "SELECT m.id, m.nickname, m.type, m.title, m.content, m.image, m.views, m
         FROM favorites f 
         INNER JOIN messages m ON f.message_id = m.id 
         $where 
-        ORDER BY f.created_at DESC 
+        ORDER BY f.created_at DESC, f.id DESC
         LIMIT $pageSize OFFSET $offset";
 $stmt = $db->prepare($sql);
 $stmt->execute($params);
