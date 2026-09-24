@@ -2,6 +2,10 @@
 require_once __DIR__ . '/includes/functions.php';
 require_once __DIR__ . '/config/database.php';
 
+// 列表浏览量等数据需要实时一致，禁止缓存（含浏览器后退缓存）
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+
 $pageTitle = '我的收藏 - 社区便民留言板';
 $currentPage = 'favorites';
 $cssPath = 'assets/css/style.css';
@@ -10,15 +14,14 @@ $jsPath = 'assets/js/main.js';
 $db = getDB();
 $visitorId = getVisitorId();
 
-$type = $_GET['type'] ?? '';
+$type = (in_array($_GET['type'] ?? '', ['help', 'suggest', 'lost'], true)) ? $_GET['type'] : '';
 $page = max(1, intval($_GET['page'] ?? 1));
 $pageSize = 10;
-$offset = ($page - 1) * $pageSize;
 
 $where = "WHERE f.visitor_id = ? AND m.status = 1";
 $params = [$visitorId];
 
-if ($type && in_array($type, ['help', 'suggest', 'lost'])) {
+if ($type) {
     $where .= " AND m.type = ?";
     $params[] = $type;
 }
@@ -26,14 +29,24 @@ if ($type && in_array($type, ['help', 'suggest', 'lost'])) {
 $countSql = "SELECT COUNT(*) FROM favorites f INNER JOIN messages m ON f.message_id = m.id $where";
 $countStmt = $db->prepare($countSql);
 $countStmt->execute($params);
-$total = $countStmt->fetchColumn();
-$totalPages = ceil($total / $pageSize);
+$total = (int) $countStmt->fetchColumn();
+$totalPages = (int) ceil($total / $pageSize);
 
-$sql = "SELECT m.id, m.nickname, m.type, m.title, m.content, m.image, m.views, m.created_at, f.created_at as favorited_at 
-        FROM favorites f 
-        INNER JOIN messages m ON f.message_id = m.id 
-        $where 
-        ORDER BY f.created_at DESC 
+// 页码越界时收敛到最后一页
+if ($total === 0) {
+    $page = 1;
+    $offset = 0;
+} else {
+    $page = min($page, $totalPages);
+    $offset = ($page - 1) * $pageSize;
+}
+
+// 末位以收藏记录id作为确定性次序，保证分页稳定
+$sql = "SELECT m.id, m.nickname, m.type, m.title, m.content, m.image, m.views, m.created_at, f.created_at as favorited_at, f.id as favorite_id
+        FROM favorites f
+        INNER JOIN messages m ON f.message_id = m.id
+        $where
+        ORDER BY f.id DESC
         LIMIT $pageSize OFFSET $offset";
 $stmt = $db->prepare($sql);
 $stmt->execute($params);
@@ -143,5 +156,12 @@ include __DIR__ . '/includes/header.php';
         <?php endif; ?>
     </div>
 </section>
+
+<script>
+// 从详情页通过浏览器后退返回时，bfcache 可能恢复旧快照；检测到恢复则重新加载，保证浏览量为最新
+window.addEventListener('pageshow', function (e) {
+    if (e.persisted) window.location.reload();
+});
+</script>
 
 <?php include __DIR__ . '/includes/footer.php'; ?>

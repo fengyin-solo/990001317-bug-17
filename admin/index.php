@@ -16,20 +16,19 @@ $type = $_GET['type'] ?? '';
 $keyword = trim($_GET['keyword'] ?? '');
 $page = max(1, intval($_GET['page'] ?? 1));
 $pageSize = 15;
-$offset = ($page - 1) * $pageSize;
 
 $where = "WHERE 1=1";
 $params = [];
 
-if ($status !== '' && in_array($status, ['0', '1', '2'])) {
+if ($status !== '' && in_array($status, ['0', '1', '2'], true)) {
     $where .= " AND status = ?";
     $params[] = intval($status);
 }
-if ($type && in_array($type, ['help', 'suggest', 'lost'])) {
+if (in_array($type, ['help', 'suggest', 'lost'], true)) {
     $where .= " AND type = ?";
     $params[] = $type;
 }
-if ($keyword) {
+if ($keyword !== '') {
     $where .= " AND (title LIKE ? OR content LIKE ? OR nickname LIKE ?)";
     $kw = "%$keyword%";
     $params[] = $kw;
@@ -39,10 +38,20 @@ if ($keyword) {
 
 $countStmt = $db->prepare("SELECT COUNT(*) FROM messages $where");
 $countStmt->execute($params);
-$total = $countStmt->fetchColumn();
-$totalPages = ceil($total / $pageSize);
+$total = (int) $countStmt->fetchColumn();
+$totalPages = (int) ceil($total / $pageSize);
 
-$sql = "SELECT * FROM messages $where ORDER BY created_at DESC LIMIT $pageSize OFFSET $offset";
+// 页码越界时收敛到最后一页，避免删除数据后停留在空白页
+if ($total === 0) {
+    $page = 1;
+    $offset = 0;
+} else {
+    $page = min($page, $totalPages);
+    $offset = ($page - 1) * $pageSize;
+}
+
+// 末位以 id 作为确定性次序，保证时间相同时分页不乱序
+$sql = "SELECT * FROM messages $where ORDER BY id DESC LIMIT $pageSize OFFSET $offset";
 $stmt = $db->prepare($sql);
 $stmt->execute($params);
 $messages = $stmt->fetchAll();

@@ -234,3 +234,30 @@ function getPendingReportCount() {
     $db = getDB();
     return $db->query("SELECT COUNT(*) FROM reports WHERE status = 0")->fetchColumn();
 }
+
+/**
+ * 记录一次留言浏览（按访客去重）
+ * 仅对已通过(status=1)的留言计数；同一访客对同一条留言只计一次。
+ * 返回 true 表示产生了新的有效浏览，false 表示无效留言或重复浏览。
+ */
+function recordMessageView($messageId) {
+    $visitorId = getVisitorId();
+    $db = getDB();
+
+    try {
+        // 同一访客对同一留言的浏览记录唯一；重复浏览插入被忽略
+        $stmt = $db->prepare("INSERT IGNORE INTO message_views (visitor_id, message_id) VALUES (?, ?)");
+        $stmt->execute([$visitorId, $messageId]);
+        if ($stmt->rowCount() === 0) {
+            return false; // 该访客已浏览过，不重复计数
+        }
+    } catch (PDOException $e) {
+        // 留言已被删除（外键约束）等情况，视为无效浏览
+        return false;
+    }
+
+    // 仅当留言仍处于已通过状态时才增加浏览量，避免拒绝/删除与浏览并发时产生脏计数
+    $stmt = $db->prepare("UPDATE messages SET views = views + 1 WHERE id = ? AND status = 1");
+    $stmt->execute([$messageId]);
+    return $stmt->rowCount() === 1;
+}

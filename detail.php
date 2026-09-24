@@ -2,6 +2,10 @@
 require_once __DIR__ . '/includes/functions.php';
 require_once __DIR__ . '/config/database.php';
 
+// 详情页数据随浏览量实时变化，禁止缓存（含浏览器后退缓存）
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+
 $id = intval($_GET['id'] ?? 0);
 if ($id <= 0) {
     header('Location: index.php');
@@ -10,10 +14,7 @@ if ($id <= 0) {
 
 $db = getDB();
 
-// 增加浏览量
-$db->prepare("UPDATE messages SET views = views + 1 WHERE id = ?")->execute([$id]);
-
-// 获取详情
+// 获取详情：仅已通过(status=1)的留言可访问，无效留言直接跳走且不计数
 $stmt = $db->prepare("SELECT * FROM messages WHERE id = ? AND status = 1");
 $stmt->execute([$id]);
 $msg = $stmt->fetch();
@@ -21,6 +22,23 @@ $msg = $stmt->fetch();
 if (!$msg) {
     header('Location: index.php');
     exit;
+}
+
+// 有效留言才记录浏览；同一访客对同一条留言只计一次
+if (recordMessageView($msg['id'])) {
+    $msg['views']++;
+}
+
+// 返回链接：同源来路为列表页时回到原位置（保留分页/排序/筛选），否则回首页
+$backUrl = 'index.php';
+$ref = $_SERVER['HTTP_REFERER'] ?? '';
+if ($ref) {
+    $refHost = parse_url($ref, PHP_URL_HOST);
+    $refPath = (string) parse_url($ref, PHP_URL_PATH);
+    if ($refHost !== null && $refHost === ($_SERVER['HTTP_HOST'] ?? '')
+        && in_array(basename($refPath), ['index.php', 'favorites.php'], true)) {
+        $backUrl = $ref;
+    }
 }
 
 $pageTitle = cleanInput($msg['title']) . ' - 社区便民留言板';
@@ -62,7 +80,7 @@ include __DIR__ . '/includes/header.php';
             <?php endif; ?>
 
             <div class="detail-actions">
-                <a href="index.php" class="btn btn-secondary">← 返回列表</a>
+                <a href="<?= htmlspecialchars($backUrl, ENT_QUOTES, 'UTF-8') ?>" class="btn btn-secondary">← 返回列表</a>
                 <?php $isFav = isFavorited($msg['id']); ?>
                 <button class="btn favorite-detail-btn <?= $isFav ? 'btn-warning' : 'btn-secondary' ?>" data-message-id="<?= $msg['id'] ?>" onclick="toggleFavorite(event, this)">
                     <span class="favorite-icon"><?= $isFav ? '⭐' : '☆' ?></span>

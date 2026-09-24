@@ -2,6 +2,10 @@
 require_once __DIR__ . '/includes/functions.php';
 require_once __DIR__ . '/config/database.php';
 
+// 列表浏览量等数据需要实时一致，禁止缓存（含浏览器后退缓存）
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+
 $pageTitle = '社区便民留言板 - 首页';
 $currentPage = 'home';
 $cssPath = 'assets/css/style.css';
@@ -9,30 +13,38 @@ $jsPath = 'assets/js/main.js';
 
 $db = getDB();
 
-// 获取排序参数
-$sort = $_GET['sort'] ?? 'time';
-$type = $_GET['type'] ?? '';
+// 获取排序参数（白名单校验，避免非法参数注入SQL）
+$sort = (($_GET['sort'] ?? '') === 'hot') ? 'hot' : 'time';
+$type = (in_array($_GET['type'] ?? '', ['help', 'suggest', 'lost'], true)) ? $_GET['type'] : '';
 $page = max(1, intval($_GET['page'] ?? 1));
 $pageSize = 10;
-$offset = ($page - 1) * $pageSize;
 
 // 构建查询
 $where = "WHERE status = 1";
 $params = [];
 
-if ($type && in_array($type, ['help', 'suggest', 'lost'])) {
+if ($type) {
     $where .= " AND type = ?";
     $params[] = $type;
 }
 
-// 排序
-$orderBy = ($sort === 'hot') ? "views DESC, created_at DESC" : "created_at DESC";
+// 排序：末位以 id 作为确定性次序，保证浏览量/时间相同时热门排序不乱序、分页不漂移
+$orderBy = ($sort === 'hot') ? "views DESC, id DESC" : "id DESC";
 
 // 总数
 $countStmt = $db->prepare("SELECT COUNT(*) FROM messages $where");
 $countStmt->execute($params);
-$total = $countStmt->fetchColumn();
-$totalPages = ceil($total / $pageSize);
+$total = (int) $countStmt->fetchColumn();
+$totalPages = (int) ceil($total / $pageSize);
+
+// 页码越界时收敛到最后一页（数据被删除或刷新后分页位置保持有效）
+if ($total === 0) {
+    $page = 1;
+    $offset = 0;
+} else {
+    $page = min($page, $totalPages);
+    $offset = ($page - 1) * $pageSize;
+}
 
 // 列表
 $sql = "SELECT id, nickname, type, title, content, image, views, created_at FROM messages $where ORDER BY $orderBy LIMIT $pageSize OFFSET $offset";
@@ -173,5 +185,12 @@ include __DIR__ . '/includes/header.php';
         <?php endif; ?>
     </div>
 </section>
+
+<script>
+// 从详情页通过浏览器后退返回时，bfcache 可能恢复旧快照；检测到恢复则重新加载，保证浏览量为最新
+window.addEventListener('pageshow', function (e) {
+    if (e.persisted) window.location.reload();
+});
+</script>
 
 <?php include __DIR__ . '/includes/footer.php'; ?>
